@@ -1,0 +1,8 @@
+certifi==2020.12.5
+chardet==4.0.0
+idna==2.10
+python-dotenv==0.15.0
+requests==2.25.1
+semantic-version==2.8.5
+Splunk-HEC==1.81
+urllib3==1.26.2
