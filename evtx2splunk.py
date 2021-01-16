@@ -172,9 +172,6 @@ class Evtx2Splunk(object):
                     # Finally send the stream
                     self._hec_server.batchEvent(payload)
 
-                # Assure to flush all the threads before we end the function
-                # self._splunk_handler.flushBatch()
-
                 return True
 
             else:
@@ -229,6 +226,9 @@ class Evtx2Splunk(object):
 
         master_pool.map(master_partial, range(self._nb_ingestors))
         master_pool.close()
+
+        # Assure to flush all the threads before we end the function
+        self._splunk_handler.flushBatch()
 
         # Clean the temporary folder if not indicated not to do so
         if not keep_cache:
