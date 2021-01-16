@@ -2,8 +2,8 @@
 Ingest EVTX files into a Splunk instance. 
 
 This tool is based on the work of :
-  - Omer BenAmram - https://github.com/omerbenamram/
-  -  Blardy - https://github.com/blardy/evtx2elk
+  - [Omer BenAmram](https://github.com/omerbenamram/)
+  - [Blardy](https://github.com/blardy/evtx2elk)
 
 *Thanks to [Ekto](https://github.com/Ektoplasma) for its contribution.*  
 

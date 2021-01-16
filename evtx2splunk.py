@@ -55,19 +55,22 @@ class Evtx2Splunk(object):
 
     def __init__(self):
         """
-        Init funciton of the Evtx2Splunk class
+        Init functton of the Evtx2Splunk class
         """
         self._sh = None
         self._hec_server = None
+        self._nb_ingestors = 1
 
-    def configure(self, args: argparse.Namespace):
+    def configure(self, index:str, nb_ingestors: int):
         """
-        Configure the instance of SplunkHelper and verify the input arguments
-        :param args: Input arguments
+        Configure the instance of SplunkHelper
+        :param index: Index where to push the files
         :return: True if successfully configured else False
         """
         # Load the environment variables for .env
         load_dotenv()
+
+        self._nb_ingestors = nb_ingestors
 
         log.info("Init SplunkHelper")
         self._sh = SplunkHelper(splunk_url=os.getenv("SPLUNK_URL"),
@@ -85,17 +88,17 @@ class Evtx2Splunk(object):
             hect = self._sh.get_or_create_hect()
 
             # Create a new index
-            if self._sh.create_index(args.index):
+            if self._sh.create_index(index=index):
 
                 # Associate the index to the HEC token so the script can send
                 # the logs to it
-                self._sh.register_index_to_hec(args.index)
+                self._sh.register_index_to_hec(index=index)
 
                 # Instantiate HEC class and configure
                 self._hec_server = http_event_collector(token=hect,
                                                         http_event_server=os.getenv("SPLUNK_URL"))
                 self._hec_server.http_event_server_ssl = True
-                self._hec_server.index = args.index
+                self._hec_server.index = index
                 self._hec_server.input_type = "json"
                 self._hec_server.popNullFields = True
 
@@ -181,20 +184,22 @@ class Evtx2Splunk(object):
             log.warning(e)
             return False
 
-    def ingest(self):
+    def ingest(self, input_files: str, keep_cache: bool):
         """
         Main function of the class. List the files, call the converter
         and then multiprocess the input.
+        :param input_files: Path to a file or a folder to ingest
+        :param keep_cache: Set to true to keep json temporary folder at the end of the process
         :return: Nothing
         """
         # Get the folder to index
-        input_folder = Path(args.input)
+        input_folder = Path(input_files)
 
         # Temporary files are placed in the same directory, not in tmp as there is a
         # a risk over overloading tmp dir depending on the partitioning
         if input_folder.is_file():
             output_folder = input_folder.parents[0] / "json_evtx"
-            args.nb_process = 1
+            self._nb_ingestors = 1
 
         elif input_folder.is_dir():
             output_folder = input_folder / "json_evtx"
@@ -216,17 +221,17 @@ class Evtx2Splunk(object):
         # Files are converted, now build a list of the files to index
         # dispatch by size
         evtx_files = [files for files in output_folder.rglob('*.json')]
-        sublists = self.dispatch_files_bysize(args.nb_process, evtx_files)
+        sublists = self.dispatch_files_bysize(self._nb_ingestors, evtx_files)
 
         # Create pool of processes and partial the input
-        master_pool = Pool(args.nb_process)
+        master_pool = Pool(self._nb_ingestors)
         master_partial = partial(self.ingest_worker, sublists)
 
-        master_pool.map(master_partial, range(args.nb_process))
+        master_pool.map(master_partial, range(self._nb_ingestors))
         master_pool.close()
 
         # Clean the temporary folder if not indicated not to do so
-        if not args.keep_cache:
+        if not keep_cache:
             shutil.rmtree(output_folder, ignore_errors=True)
 
     def ingest_worker(self, sublist: list, index: int):
@@ -335,8 +340,8 @@ if __name__ == "__main__":
 
     e2s = Evtx2Splunk()
 
-    if e2s.configure(args=args):
-        e2s.ingest()
+    if e2s.configure(index=args.index, nb_ingestors=args.nb_process):
+        e2s.ingest(input_files=args.input, keep_cache=args.keep_cache)
 
     end_time = time.time()
 
