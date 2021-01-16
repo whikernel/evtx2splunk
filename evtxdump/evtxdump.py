@@ -80,7 +80,7 @@ class EvtxDump(object):
         completed = False
 
         try:
-            command = (self._evtx_dump, evtxdata, "-o", "jsonl", "-f", out_file, "-v")
+            command = (self._evtx_dump, evtxdata, "-o", "jsonl", "-f", out_file, "-v", "--no-confirm-overwrite")
             completed = subprocess.run(command, capture_output=True)
         except Exception as e:
             log.error(e)
