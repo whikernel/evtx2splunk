@@ -20,7 +20,7 @@ This tool is based on the work of :
 Hence, up to the size of source EVTX can be created during the process. These files are removed at the end of the process, except if `keep_cache` is enabled. 
 
 ## Installation
-**Usage of a *venv* is recommended to avoid conflicts.**
+**Usage of a *venv* is recommended to avoid conflicts. Please use Python 3.7 or later.**
 1. Clone the repo : `git clone https://github.com/whikernel/evtx2splunk.git && cd evtx2splunk`
 2. Install the requirements: `pip3 instal -r ./requirements.txt`
 3. Copy env configuration : `cp env.sample .env` and fill it with you Splunk configuration   
