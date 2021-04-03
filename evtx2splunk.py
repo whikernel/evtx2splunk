@@ -28,6 +28,7 @@ from multiprocessing.dummy import Pool
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import TextIO
+import tqdm
 
 from splunk_http_event_collector import http_event_collector
 from dotenv import load_dotenv
@@ -60,10 +61,13 @@ class Evtx2Splunk(object):
         self._sh = None
         self._hec_server = None
         self._nb_ingestors = 1
+        self._is_test = False
 
-    def configure(self, index:str, nb_ingestors: int):
+    def configure(self, index:str, nb_ingestors: int, testing: bool):
         """
         Configure the instance of SplunkHelper
+        :param nb_ingestors: NB of ingestors to use
+        :param testing: If yes, no file would be injected into splunk to preserve licenses
         :param index: Index where to push the files
         :return: True if successfully configured else False
         """
@@ -71,6 +75,10 @@ class Evtx2Splunk(object):
         load_dotenv()
 
         self._nb_ingestors = nb_ingestors
+
+        self._is_test = testing
+        if self._is_test:
+            log.warning("Testing mode enabled. NO data will be injected into Splunk")
 
         log.info("Init SplunkHelper")
         self._sh = SplunkHelper(splunk_url=os.getenv("SPLUNK_URL"),
@@ -113,6 +121,7 @@ class Evtx2Splunk(object):
         :param records_stream: TextIO - Input JSON stream to index
         :param source: Str representing the source indexed as in the Splunk sense
         :param sourcetype: Str representing the source type to index - always JSON here
+        :param source_size: Size of the input file
         :return: True if the indexing was successfully else False
         """
 
@@ -128,7 +137,9 @@ class Evtx2Splunk(object):
 
                 # Send batch of events it will be handled consecutively
                 # and sent to the Splunk HEC endpoint
+
                 for record_line in records_stream:
+
                     try:
                         record = json.loads(record_line)
                     except ValueError:
@@ -170,7 +181,10 @@ class Evtx2Splunk(object):
                     payload.update({"event": record})
 
                     # Finally send the stream
-                    self._hec_server.batchEvent(payload)
+                    if not self._is_test:
+                        self._hec_server.batchEvent(payload)
+                    else:
+                        log.debug("Test mode. Would have injected : {payload}".format(payload=payload))
 
                 return True
 
@@ -181,7 +195,7 @@ class Evtx2Splunk(object):
             log.warning(e)
             return False
 
-    def ingest(self, input_files: str, keep_cache: bool):
+    def ingest(self, input_files: str, keep_cache: bool, use_cache: bool):
         """
         Main function of the class. List the files, call the converter
         and then multiprocess the input.
@@ -205,20 +219,26 @@ class Evtx2Splunk(object):
             log.error("Input is neither a file or a directory")
             return
 
-        log.info("Starting EVTX conversion. Nothing will be output until the end of conversion")
-        if sys.platform == "win32":
-            evtxdump = EvtxDump(output_folder, Path("evtxdump/windows/x64/evtx_dump.exe"),
-                                fdfind="evtxdump/windows/x64/fd.exe")
-        else:
-            evtxdump = EvtxDump(output_folder, Path("evtxdump/linux/x64/evtx_dump"),
-                                fdfind="evtxdump/linux/x64/fd")
+        if not use_cache:
+            log.info("Starting EVTX conversion. Nothing will be output until the end of conversion")
+            if sys.platform == "win32":
+                evtxdump = EvtxDump(output_folder, Path("evtxdump/windows/x64/evtx_dump.exe"),
+                                    fdfind="evtxdump/windows/x64/fd.exe")
+            else:
+                evtxdump = EvtxDump(output_folder, Path("evtxdump/linux/x64/evtx_dump"),
+                                    fdfind="evtxdump/linux/x64/fd")
 
-        evtxdump.run(input_folder)
+            evtxdump.run(input_folder)
+
+        else:
+            log.warning("Using cached files")
 
         # Files are converted, now build a list of the files to index
         # dispatch by size
         evtx_files = [files for files in output_folder.rglob('*.json')]
+
         sublists = self.dispatch_files_bysize(self._nb_ingestors, evtx_files)
+        self.desc = ""
 
         # Create pool of processes and partial the input
         master_pool = Pool(self._nb_ingestors)
@@ -244,19 +264,26 @@ class Evtx2Splunk(object):
         """
         count = 0
         sum = 0
+        desc = ""
+        file_log = tqdm.tqdm(total=0, position=index*2, bar_format='{desc}')
+        with tqdm.tqdm(total=len(sublist[index]), position=(index*2)+1, desc=desc, unit="files") as progress:
+            for jevtx_file in sublist[index]:
 
-        for jevtx_file in sublist[index]:
+                sum += 1
+                with open(jevtx_file, "r") as jevtx_stream:
 
-            sum += 1
-            with open(jevtx_file, "r") as jevtx_stream:
+                    if not self._is_test:
+                        desc = "[Worker {index}] Processing {evtx}".format(index=index, evtx=jevtx_file.name)
+                    else:
+                        desc = "[Worker {index}] [TEST] Processing {evtx}".format(index=index, evtx=jevtx_file.name)
 
-                log.info("Injecting {evtx}".format(evtx=jevtx_file))
-
-                ret_t = self.send_jevtx_file_to_splunk(jevtx_stream,
-                                                       "event_" + jevtx_file.name,
-                                                       "json",
-                                                       )
-                count += 1 if ret_t else 0
+                    ret_t = self.send_jevtx_file_to_splunk(records_stream=jevtx_stream,
+                                                           source="event_" + jevtx_file.name,
+                                                           sourcetype="json"
+                                                           )
+                    count += 1 if ret_t else 0
+                    file_log.set_description_str(desc)
+                    progress.update(1)
 
         return count, sum
 
@@ -333,6 +360,12 @@ if __name__ == "__main__":
     parser.add_argument('--keep_cache', action="store_true",
                         help="Keep JSON cache for future use - Might take a lot of space")
 
+    parser.add_argument('--use_cache', action="store_true",
+                        help="Keep JSON cache for future use - Might take a lot of space")
+
+    parser.add_argument('--test', action="store_true",
+                        help="Testing mode. No data is sent to Splunk but index and HEC are created.")
+
     args = parser.parse_args()
     log.basicConfig(format=LOG_FORMAT, level=LOG_VERBOSITY[args.verbosity], datefmt='%Y-%m-%d %I:%M:%S')
 
@@ -340,8 +373,8 @@ if __name__ == "__main__":
 
     e2s = Evtx2Splunk()
 
-    if e2s.configure(index=args.index, nb_ingestors=args.nb_process):
-        e2s.ingest(input_files=args.input, keep_cache=args.keep_cache)
+    if e2s.configure(index=args.index, nb_ingestors=args.nb_process, testing=args.test):
+        e2s.ingest(input_files=args.input, keep_cache=args.keep_cache, use_cache=args.use_cache)
 
     end_time = time.time()
 

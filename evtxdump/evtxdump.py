@@ -6,7 +6,6 @@
 
     Thanks to Ektoplasma for its contribution
 
-    TODO: Use the python binding provided as of https://github.com/omerbenamram/pyevtx-rs
 """
 __progname__ = "evtx2splunk"
 __date__ = "2020-01-10"
@@ -22,7 +21,7 @@ class EvtxDump(object):
     """
     Wrapper around evtx_dump, a tool writen in go for speed conversion of evtx
     """
-    def __init__(self, output_path: Path, path_evtx_dump: Path, fdfind: str ="fdfind"):
+    def __init__(self, output_path: Path=None, path_evtx_dump: Path=None, fdfind: str ="fdfind"):
         """
         Init method of the EvtxDump class. Just saves some input args
         :param output_path: Path - Output path of the files
@@ -40,26 +39,13 @@ class EvtxDump(object):
         :return:
         """
         if evtxdata.is_file():
-            return_code = self._convert_file(evtxdata)
+            return self._convert_file(evtxdata)
 
         elif evtxdata.is_dir():
-            return_code = self._convert_files(evtxdata)
+            return self._convert_files(evtxdata)
 
         else:
             log.error("Data is neither a file nor a folder, not supported")
-            return False
-
-        if return_code == 1:
-            return False
-
-        elif return_code.returncode == 0:
-            log.info("EVTX logs successfully converted.")
-            return True
-
-        else:
-            log.error("Something went wrong parsing the ETVX files.")
-            log.warning(return_code.stderr)
-            log.warning(return_code.stdout)
             return False
 
     def _convert_file(self, evtxdata: Path):
@@ -69,19 +55,18 @@ class EvtxDump(object):
         :return: True if successful, else False
         """
 
+        completed = False
         filename = evtxdata.name + ".json"
 
         out_file = Path(self._output_path, filename)
 
         if out_file.exists():
             log.error("Destination file already exists")
-            return 1
-
-        completed = False
+            return completed
 
         try:
-            command = (self._evtx_dump, evtxdata, "-o", "jsonl", "-f", out_file, "-v", "--no-confirm-overwrite")
-            completed = subprocess.run(command, capture_output=True)
+            command = (self._evtx_dump, evtxdata, "-o", "jsonl", "-f", out_file, "--no-confirm-overwrite")
+            completed = subprocess.check_call(command)
         except Exception as e:
             log.error(e)
 
@@ -107,11 +92,11 @@ class EvtxDump(object):
                 log.error("Destination file already exists")
                 return 1
 
-        command = (self._fdfind, r".*\.evtx\w*", evtxdata, "-x",
-                   self._evtx_dump, "-o", "jsonl", "{}",
-                   "-f", Path(self._output_path, "{/.}.json"))
         try:
-            completed = subprocess.run(command, capture_output=True)
+            command = (self._fdfind, r".*\.evtx\w*", evtxdata, "-x",
+                       self._evtx_dump, "-o", "jsonl", "{}", "--no-confirm-overwrite",
+                       "-f", Path(self._output_path, "{/.}.json"))
+            completed = subprocess.check_call(command)
         except Exception as e:
             log.error(e)
 
