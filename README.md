@@ -37,9 +37,11 @@ python3 evtx2splunk.py --folder /data/evtx/folder --index case_0001 --nb_process
 - `--index`: Splunk index to push the evtx 
 - `--nb_process`: Number of ingest processes to create. Default to number of cores
 - `--keep_cache`: Keep JSON cache for future use - Might take a lot of space
+- `--use_cache` : Use the cache saved previously. Add `--keep_cache` to avoid erase of the case at the end.
+- `--test` : Enable test mode. Do not push the events into to Splunk to preserve license.  
 
 ## Improvements to come 
-- Use the `evtx` python binding instead of the binaries 
+- ~~Use the `evtx` python binding instead of the binaries~~ : Huge loss of performance after testing 
 - Add the possibility to dynamically add fields
 - Add the possibility to dynamically change the computer name 
 - Add the possibility to recreate an already-existing index 
