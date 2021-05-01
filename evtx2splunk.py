@@ -62,19 +62,40 @@ class Evtx2Splunk(object):
         self._hec_server = None
         self._nb_ingestors = 1
         self._is_test = False
+        self._resolve = True
+        self._resolver = {}
+        self.myevent = []
 
-    def configure(self, index:str, nb_ingestors: int, testing: bool):
+    def configure(self, index:str, nb_ingestors: int, testing: bool, no_resolve: bool):
         """
         Configure the instance of SplunkHelper
         :param nb_ingestors: NB of ingestors to use
         :param testing: If yes, no file would be injected into splunk to preserve licenses
         :param index: Index where to push the files
+        :param no_resolve: Disable Event ids resolution
         :return: True if successfully configured else False
         """
         # Load the environment variables for .env
         load_dotenv()
 
         self._nb_ingestors = nb_ingestors
+
+        if no_resolve :
+            log.info("Event ID resolution disabled")
+            self._resolve = False
+
+        elif not Path("evtx_data.json").exists():
+            log.error("Event ID data file not found")
+            log.error("Will without resolution")
+            self._resolve = False
+
+        if self._resolve:
+            with open("evtx_data.json", "r") as fdata:
+                try:
+                    self._resolver = json.load(fdata)
+                except Exception as e:
+                    log.error("Unable to read event data file. Error {e}".format(e=e))
+                    return False
 
         self._is_test = testing
         if self._is_test:
@@ -177,6 +198,12 @@ class Evtx2Splunk(object):
 
                     record["module"] = record["Event"]["System"]["Channel"]
 
+                    if self._resolve:
+                        message = self.format_resolve(record)
+                        if message:
+                            record["message"] = message
+                            print(record)
+
                     payload.update({"time": epoch})
                     payload.update({"event": record})
 
@@ -194,6 +221,30 @@ class Evtx2Splunk(object):
         except Exception as e:
             log.warning(e)
             return False
+
+    def format_resolve(self, record):
+        """
+        Return a formatted string of the record if formatting is available
+        :param record: Record to format
+        :return: Formatted string of the record
+        """
+        try:
+            provider = record["Event"]["System"]["Provider"]["#attributes"]["Name"]
+            event_id = record["Event"]["System"]["EventID"]
+
+            if type(event_id) == dict:
+                event_id = record["Event"]["System"]["EventID"]["#text"]
+
+            if provider in self._resolver:
+
+                if self._resolver[provider].get(str(event_id)):
+                    message = self._resolver[provider].get(str(event_id))
+                    return message
+
+        except Exception as e:
+            log.error(e)
+
+        return ""
 
     def ingest(self, input_files: str, keep_cache: bool, use_cache: bool):
         """
@@ -333,7 +384,7 @@ class Evtx2Splunk(object):
             return smallest_list_id
 
         for file in files:
-            log.info('dispatching {}'.format(file))
+            log.debug('dispatching {}'.format(file))
             list_id = _get_smallest_sublist(sublists)
             sublists[list_id]['files'].append(file)
             sublists[list_id]['size'] += os.stat(file).st_size
@@ -361,10 +412,13 @@ if __name__ == "__main__":
                         help="Keep JSON cache for future use - Might take a lot of space")
 
     parser.add_argument('--use_cache', action="store_true",
-                        help="Keep JSON cache for future use - Might take a lot of space")
+                        help="Use the cached files")
 
     parser.add_argument('--test', action="store_true",
-                        help="Testing mode. No data is sent to Splunk but index and HEC are created.")
+                        help="Testing mode. No data is sent to Splunk but index and HEC token are created.")
+
+    parser.add_argument('--no_resolve', action="store_true",
+                        help="Disable the event id resolution. If the data file is not found, will be disabled automatically")
 
     args = parser.parse_args()
     log.basicConfig(format=LOG_FORMAT, level=LOG_VERBOSITY[args.verbosity], datefmt='%Y-%m-%d %I:%M:%S')
@@ -373,7 +427,7 @@ if __name__ == "__main__":
 
     e2s = Evtx2Splunk()
 
-    if e2s.configure(index=args.index, nb_ingestors=args.nb_process, testing=args.test):
+    if e2s.configure(index=args.index, nb_ingestors=args.nb_process, testing=args.test, no_resolve=args.no_resolve):
         e2s.ingest(input_files=args.input, keep_cache=args.keep_cache, use_cache=args.use_cache)
 
     end_time = time.time()
