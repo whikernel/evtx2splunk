@@ -202,8 +202,7 @@ class Evtx2Splunk(object):
                         message = self.format_resolve(record)
                         if message:
                             record["message"] = message
-                            print(record)
-
+                            
                     payload.update({"time": epoch})
                     payload.update({"event": record})
 
