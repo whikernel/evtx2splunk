@@ -13,7 +13,6 @@ __date__ = "2020-01-10"
 __version__ = "0.1"
 __author__ = "whitekernel - PAM"
 
-
 import argparse
 import json
 import time
@@ -35,7 +34,6 @@ from dotenv import load_dotenv
 
 from evtxdump.evtxdump import EvtxDump
 from splunk_helper import SplunkHelper
-
 
 LOG_FORMAT = '%(asctime)s %(levelname)s %(funcName)s: %(message)s'
 LOG_VERBOSITY = {
@@ -63,12 +61,14 @@ class Evtx2Splunk(object):
         self._nb_ingestors = 1
         self._is_test = False
         self._resolve = True
+        self._evtxdump = None
         self._resolver = {}
         self.myevent = []
 
-    def configure(self, index:str, nb_ingestors: int, testing: bool, no_resolve: bool):
+    def configure(self, config: dict, index: str, nb_ingestors: int, testing: bool, no_resolve: bool, proxies: dict):
         """
         Configure the instance of SplunkHelper
+        :param config: The configuration of evtx2splunk
         :param nb_ingestors: NB of ingestors to use
         :param testing: If yes, no file would be injected into splunk to preserve licenses
         :param index: Index where to push the files
@@ -80,7 +80,11 @@ class Evtx2Splunk(object):
 
         self._nb_ingestors = nb_ingestors
 
-        if no_resolve :
+        ret = self._get_bind_conf(config.get("evtxdump_config_file"))
+        if ret is False:
+            log.error("Something went wrong while parsing evtxdump config file")
+
+        if no_resolve:
             log.info("Event ID resolution disabled")
             self._resolve = False
 
@@ -102,11 +106,12 @@ class Evtx2Splunk(object):
             log.warning("Testing mode enabled. NO data will be injected into Splunk")
 
         log.info("Init SplunkHelper")
-        self._sh = SplunkHelper(splunk_url=os.getenv("SPLUNK_URL"),
-                                splunk_port=os.getenv("SPLUNK_MPORT"),
-                                splunk_ssl_verify=os.getenv("SPLUNK_SSL") == "True",
-                                username=os.getenv("SPLUNK_USER"),
-                                password=os.getenv("SPLUNK_PASS"))
+        self._sh = SplunkHelper(splunk_url=config.get('splunk_url'),
+                                splunk_port=config.get('splunk_mport'),
+                                splunk_ssl_verify=config.get('splunk_ssl_verify'),
+                                username=config.get('splunk_user'),
+                                password=config.get('splunk_pass'),
+                                proxies=proxies)
 
         # The SplunkHelper instantiation holds a link_up
         # flag that indicated whether it could successfully reach
@@ -118,15 +123,14 @@ class Evtx2Splunk(object):
 
             # Create a new index
             if self._sh.create_index(index=index):
-
                 # Associate the index to the HEC token so the script can send
                 # the logs to it
                 self._sh.register_index_to_hec(index=index)
 
                 # Instantiate HEC class and configure
                 self._hec_server = http_event_collector(token=hect,
-                                                        http_event_server=os.getenv("SPLUNK_URL"))
-                self._hec_server.http_event_server_ssl = True
+                                                        http_event_server=config.get('splunk_url'))
+                self._hec_server.http_event_server_ssl = config.get('splunk_ssl')
                 self._hec_server.index = index
                 self._hec_server.input_type = "json"
                 self._hec_server.popNullFields = True
@@ -202,7 +206,7 @@ class Evtx2Splunk(object):
                         message = self.format_resolve(record)
                         if message:
                             record["message"] = message
-                            
+
                     payload.update({"time": epoch})
                     payload.update({"event": record})
 
@@ -272,11 +276,11 @@ class Evtx2Splunk(object):
         if not use_cache:
             log.info("Starting EVTX conversion. Nothing will be output until the end of conversion")
             if sys.platform == "win32":
-                evtxdump = EvtxDump(output_folder, Path("evtxdump/windows/x64/evtx_dump.exe"),
-                                    fdfind="evtxdump/windows/x64/fd.exe")
+                evtxdump = EvtxDump(output_folder, Path(self._evtxdump["configuration"]["evtx_dump"]["windows"]),
+                                    fdfind=self._evtxdump["configuration"]["fdfind"]["windows"])
             else:
-                evtxdump = EvtxDump(output_folder, Path("evtxdump/linux/x64/evtx_dump"),
-                                    fdfind="evtxdump/linux/x64/fd")
+                evtxdump = EvtxDump(output_folder, Path(self._evtxdump["configuration"]["evtx_dump"]["linux"]),
+                                    fdfind=self._evtxdump["configuration"]["fdfind"]["linux"])
 
             evtxdump.run(input_folder)
 
@@ -315,8 +319,8 @@ class Evtx2Splunk(object):
         count = 0
         sum = 0
         desc = ""
-        file_log = tqdm.tqdm(total=0, position=index*2, bar_format='{desc}')
-        with tqdm.tqdm(total=len(sublist[index]), position=(index*2)+1, desc=desc, unit="files") as progress:
+        file_log = tqdm.tqdm(total=0, position=index * 2, bar_format='{desc}')
+        with tqdm.tqdm(total=len(sublist[index]), position=(index * 2) + 1, desc=desc, unit="files") as progress:
             for jevtx_file in sublist[index]:
 
                 sum += 1
@@ -394,7 +398,18 @@ class Evtx2Splunk(object):
 
         return [sublist['files'] for list_id, sublist in sublists.items()]
 
+    def _get_bind_conf(self, bind_file):
 
+        try:
+            with open(bind_file, "r") as f_input:
+                self._evtxdump = json.load(f_input)
+                return True
+        except Exception as e:
+            log.warning(e)
+            return False
+
+
+"""
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -432,4 +447,4 @@ if __name__ == "__main__":
     end_time = time.time()
 
     log.info("Finished in {time}".format(time=end_time-start_time))
-
+"""

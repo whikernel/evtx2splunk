@@ -22,7 +22,8 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 
 class SplunkHelper(object):
-    def __init__(self, splunk_url: str, splunk_port: int, splunk_ssl_verify: bool, username: str, password: str):
+    def __init__(self, splunk_url: str, splunk_port: int, splunk_ssl_verify: bool, username: str, password: str
+                 , proxies: dict):
         """
         Init class of the helper.
         :param splunk_url: URL of the Splunk instance
@@ -30,12 +31,14 @@ class SplunkHelper(object):
         :param splunk_ssl_verify: True to check ssl certificate
         :param username: Administrative account
         :param password: Password account
+        :param proxies: Proxies to use to contact the Splunk server
         """
         self._surl = "https://{url}:{port}/".format(url=splunk_url,
                                                     port=splunk_port)
         self._suser = username
         self._spwd = password
         self._ssl_verify = splunk_ssl_verify
+        self._proxies = proxies
         if not self._ssl_verify:
             requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -60,20 +63,22 @@ class SplunkHelper(object):
         """
         ret = False
         response = None
+        session = requests.Session()
+        session.proxies.update(self._proxies)
 
         try:
 
             if method == "GET":
-                response = requests.get(url=self._uri(uri=uri),
+                response = session.get(url=self._uri(uri=uri),
+                                       verify=self._ssl_verify,
+                                       auth=HTTPBasicAuth(self._suser, self._spwd),
+                                       timeout=2)
+            elif method == "POST":
+                response = session.post(url=self._uri(uri=uri),
+                                        data=data,
                                         verify=self._ssl_verify,
                                         auth=HTTPBasicAuth(self._suser, self._spwd),
                                         timeout=2)
-            elif method == "POST":
-                response = requests.post(url=self._uri(uri=uri),
-                                         data=data,
-                                         verify=self._ssl_verify,
-                                         auth=HTTPBasicAuth(self._suser, self._spwd),
-                                         timeout=2)
         except Exception as e:
             log.error(e)
             log.error("Unable to connect to Splunk. Please check URL and ports")
@@ -141,7 +146,8 @@ class SplunkHelper(object):
             return self._hec_token
 
         # Check if a token is already registered under the same name
-        ret, response = self._request(uri='services/data/inputs/http/evtx2splunk')
+        token_name = 'evtx2splunk'
+        ret, response = self._request(uri='services/data/inputs/http/%s' % token_name)
         if ret:
 
             dom = parseString(response.text)
@@ -149,7 +155,6 @@ class SplunkHelper(object):
             for e in dom.getElementsByTagName("s:key"):
 
                 if e.getAttribute("name") == "token":
-
                     # We have a key, return the node value which
                     # is the HEC token
                     log.info("HEC token found")
@@ -158,7 +163,7 @@ class SplunkHelper(object):
 
         # If we are here, we don't have a token yet, so create it
         data = {
-            "name": "evtx2splunk"
+            "name": token_name
         }
 
         ret, response = self._request(uri='services/data/inputs/http',
