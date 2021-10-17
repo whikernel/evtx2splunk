@@ -13,9 +13,7 @@ __date__ = "2020-01-10"
 __version__ = "0.1"
 __author__ = "whitekernel - PAM"
 
-import argparse
 import json
-import time
 import os
 import logging as log
 import sys
@@ -24,7 +22,6 @@ from datetime import datetime, timezone
 from functools import partial
 from glob import glob
 from multiprocessing.dummy import Pool
-from multiprocessing import cpu_count
 from pathlib import Path
 from typing import TextIO
 import tqdm
@@ -32,8 +29,8 @@ import tqdm
 from splunk_http_event_collector import http_event_collector
 from dotenv import load_dotenv
 
-from evtxdump.evtxdump import EvtxDump
-from splunk_helper import SplunkHelper
+from evtx2splunk.evtxdump.evtxdump import EvtxDump
+import evtx2splunk.SplunkHelper as SplunkHelper
 
 LOG_FORMAT = '%(asctime)s %(levelname)s %(funcName)s: %(message)s'
 LOG_VERBOSITY = {
