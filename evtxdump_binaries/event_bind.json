@@ -1,0 +1,12 @@
+{
+  "configuration": {
+    "evtx_dump": {
+      "windows": "event/evtxdump/windows/x64/evtx_dump.exe",
+      "linux": "event/evtxdump/linux/x64/evtx_dump"
+    },
+    "fdfind": {
+      "windows": "event/evtxdump/windows/x64/fd.exe",
+      "linux": "event/evtxdump/linux/x64/fd"
+    }
+  }
+}
