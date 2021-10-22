@@ -30,7 +30,7 @@ from splunk_http_event_collector import http_event_collector
 from dotenv import load_dotenv
 
 from evtx2splunk.evtxdump.evtxdump import EvtxDump
-import evtx2splunk.SplunkHelper as SplunkHelper
+from evtx2splunk.SplunkHelper import SplunkHelper
 
 LOG_FORMAT = '%(asctime)s %(levelname)s %(funcName)s: %(message)s'
 LOG_VERBOSITY = {
