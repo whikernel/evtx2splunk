@@ -24,7 +24,7 @@ setuptools.setup(
         'toml==0.10.2',
         'tqdm==4.59.0',
         'setuptools~=46.1.3',
-        'splunk-hec @ git+ssh://git@github.com/georgestarcher/Splunk-Class-httpevent.git'
+        'splunk-hec @ git+https://github.com/georgestarcher/Splunk-Class-httpevent.git'
     ]
 
  )
