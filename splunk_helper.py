@@ -13,7 +13,6 @@ __author__ = "whitekernel - PAM"
 from typing import Any
 
 import requests
-import urllib3
 from requests.auth import HTTPBasicAuth
 import logging as log
 from xml.dom.minidom import parse, parseString
