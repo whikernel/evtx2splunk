@@ -14,16 +14,16 @@ setuptools.setup(
          "Operating System :: OS Independent",
      ],
     install_requires=[
-        'certifi==2020.12.5',
+        'certifi==2021.10.8',
         'chardet==4.0.0',
-        'idna==2.10',
+        'idna==3.3',
         'python-dotenv == 0.15.0',
-        'requests==2.25.1',
+        'requests==2.26.0',
         'semantic-version == 2.8.5',
         'urllib3>=1.26.5',
         'toml==0.10.2',
         'tqdm==4.59.0',
-        'setuptools~=46.1.3',
+        'setuptools~=47.1.3',
         'splunk-hec @ git+https://github.com/georgestarcher/Splunk-Class-httpevent.git'
     ]
 
