@@ -23,7 +23,7 @@ setuptools.setup(
         'urllib3>=1.26.5',
         'toml==0.10.2',
         'tqdm==4.59.0',
-        'setuptools~=60.7.1',
+        'setuptools==59.6.0',
         'splunk-hec @ git+https://github.com/georgestarcher/Splunk-Class-httpevent.git'
     ]
 
